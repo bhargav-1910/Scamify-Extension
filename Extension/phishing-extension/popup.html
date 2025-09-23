@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ScamiFy</title>
+    <link rel="stylesheet" href="styles.css">
+    <!-- Add font-awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <!-- Add Rowdies font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Rowdies:wght@300;400;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Authentication Screen -->
+    <div class="auth-container" id="authContainer">
+        <div class="auth-card">
+            <div class="auth-header">
+                <div class="logo">
+                    <div class="logo-icon">
+                        <img src="icons/logo.png" alt="ScamiFy" class="logo-image" />
+                    </div>
+                    <h1 class="auth-title">ScamiFy</h1>
+                </div>
+                <p class="auth-subtitle">Secure your browsing experience</p>
+            </div>
+            
+            <!-- Login Form -->
+            <form class="auth-form" id="loginForm">
+                <h2>Login</h2>
+                <div class="form-group">
+                    <input type="email" id="loginEmail" placeholder="Email" required>
+                </div>
+                <div class="form-group">
+                    <input type="password" id="loginPassword" placeholder="Password" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Login</button>
+                <p class="auth-switch">
+                    Don't have an account? 
+                    <a href="#" id="showRegister">Register</a>
+                </p>
+            </form>
+            
+            <!-- Register Form -->
+            <form class="auth-form" id="registerForm" style="display: none;">
+                <h2>Register</h2>
+                <div class="form-group">
+                    <input type="text" id="registerUsername" placeholder="Username" required>
+                </div>
+                <div class="form-group">
+                    <input type="email" id="registerEmail" placeholder="Email" required>
+                </div>
+                <div class="form-group">
+                    <input type="password" id="registerPassword" placeholder="Password" required>
+                </div>
+                <div class="form-group">
+                    <input type="password" id="confirmPassword" placeholder="Confirm Password" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Register</button>
+                <p class="auth-switch">
+                    Already have an account? 
+                    <a href="#" id="showLogin">Login</a>
+                </p>
+            </form>
+        </div>
+    </div>
+
+    <!-- Main Extension Interface (New Dashboard Structure) -->
+    <div class="new-container" id="newMainContainer" style="display: none;">
+        <!-- Sidebar Navigation -->
+        <nav class="sidebar">
+            <div class="sidebar-header">
+                <img src="icons/logo.png" alt="Logo" class="sidebar-logo" />
+            </div>
+            <ul class="sidebar-menu">
+                <li><a href="#" class="nav-link active" id="navDashboard" data-tooltip="Dashboard"><i class="fas fa-tachometer-alt"></i></a></li>
+                <li><a href="#" class="nav-link" id="navUrlChecker" data-tooltip="URL Checker"><i class="fas fa-search"></i></a></li>
+                <li><a href="#" class="nav-link" id="navGlobalStats" data-tooltip="Global Stats"><i class="fas fa-globe"></i></a></li>
+                <li><a href="#" class="nav-link" id="navFeatures" data-tooltip="Features"><i class="fas fa-toggle-on"></i></a></li>
+                <li><a href="#" class="nav-link" id="navPremium" data-tooltip="Premium"><i class="fas fa-crown"></i></a></li>
+            </ul>
+            <div class="sidebar-footer">
+                <a href="#" class="nav-link" id="navSettings" data-tooltip="Settings"><i class="fas fa-cog"></i></a>
+            </div>
+        </nav>
+
+        <!-- Content Area -->
+        <div class="content-area">
+            <!-- Header for Content Area -->
+            <header class="content-header">
+                <div class="header-left">
+                    <img src="icons/logo.png" alt="Logo" class="header-logo" />
+                    <h2 class="extension-name">ScamiFy</h2>
+                </div>
+                <div class="header-right">
+                    <span class="username" id="currentUsername"></span>
+                    <button class="logout-btn" id="newLogoutBtn"><i class="fas fa-sign-out-alt"></i></button>
+                </div>
+            </header>
+
+            <!-- Main Dashboard View -->
+            <div class="main-view" id="dashboardView">
+                <div class="power-section">
+                    <button class="power-button active" id="powerButton">
+                        <i class="fas fa-power-off"></i>
+                    </button>
+                    <p class="connection-status" id="connectionStatus">Connection is ON</p>
+                </div>
+                <div class="dashboard-content">
+                    <div class="location-info">
+                        <div class="location-icon">
+                            <i class="fas fa-map-marker-alt"></i>
+                        </div>
+                        <div class="location-details">
+                            <h4>AI Protection Active</h4>
+                            <p>Your browsing is protected</p>
+                        </div>
+                    </div>
+                    
+                    <div class="stats-summary">
+                        <div class="stat-item">
+                            <div class="stat-number" id="totalScanned">0</div>
+                            <div class="stat-label">URLs Scanned</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-number" id="threatsBlocked">0</div>
+                            <div class="stat-label">Threats Blocked</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- URL Checker View -->
+            <div class="main-view" id="urlCheckerView" style="display: none;">
+                <div class="url-checker-section">
+                    <h4><i class="fas fa-search"></i> Manual URL Checker</h4>
+                    <p>Check any URL for potential phishing threats</p>
+                    <div class="url-input-group">
+                        <input type="url" id="manualUrlInput" placeholder="Enter or paste URL to check (https://example.com)" class="url-input">
+                        <button id="checkUrlBtn" class="btn btn-primary btn-check">
+                            <i class="fas fa-shield-alt"></i>
+                            Check URL
+                        </button>
+                    </div>
+                    <div id="urlCheckResult" class="url-check-result" style="display: none;">
+                        <div class="result-content">
+                            <div class="result-icon">
+                                <i class="fas fa-shield-alt"></i>
+                            </div>
+                            <div class="result-details">
+                                <h5 id="resultTitle">Scanning...</h5>
+                                <p id="resultDescription">Analyzing URL for threats...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Global Statistics View -->
+            <div class="main-view" id="globalStatsView" style="display: none;">
+                <div class="global-stats-section">
+                    <h4><i class="fas fa-globe"></i> Global Statistics</h4>
+                    <p>Real-time global phishing threats and statistics will open in a new tab</p>
+                    <div class="action-buttons">
+                        <button id="globalStatsNewTabBtn" class="btn btn-primary btn-large">
+                            <i class="fas fa-external-link-alt"></i> Open Global Statistics
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Features View -->
+            <div class="main-view" id="featuresView" style="display: none;">
+                <div class="settings-group">
+                    <h4>Extension Features</h4>
+                    <div class="setting-item">
+                        <span class="setting-label">Enable AI Protection <i class="fas fa-info-circle info-icon"></i></span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="extensionToggle" checked>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="setting-item">
+                        <span class="setting-label">Allow desktop notifications <i class="fas fa-info-circle info-icon"></i></span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="featureNotifToggle" checked>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="setting-item">
+                        <span class="setting-label">Download Protection <i class="fas fa-info-circle info-icon"></i></span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="downloadProtectionToggle" checked>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="setting-item">
+                        <span class="setting-label">Hover Detection <i class="fas fa-info-circle info-icon"></i></span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="hoverDetectionToggle" checked>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Premium View (Updated) -->
+            <div class="main-view" id="premiumViewDashboard" style="display: none;">
+                <div class="premium-view-content">
+                    <div class="premium-header">
+                        <i class="fas fa-crown premium-logo-icon"></i>
+                        <h3>Unlock Premium Features</h3>
+                        <h2>Go Premium!</h2>
+                    </div>
+                    <div class="premium-features">
+                        <div class="feature-item">
+                            <i class="fas fa-check-circle"></i>
+                            <span>Advanced Phishing Detection</span>
+                        </div>
+                        <div class="feature-item">
+                            <i class="fas fa-shield-alt"></i>
+                            <span>Real-time Threat Alerts</span>
+                        </div>
+                        <div class="feature-item">
+                            <i class="fas fa-download"></i>
+                            <span>Enhanced Download Protection</span>
+                        </div>
+                        <div class="feature-item">
+                            <i class="fas fa-user-shield"></i>
+                            <span>Priority Support</span>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary btn-large">Purchase Premium</button>
+                    <p class="guarantee">30-day money back guarantee</p>
+                </div>
+            </div>
+
+            <!-- New dedicated Settings View -->
+            <div class="main-view" id="settingsView" style="display: none;">
+                <div class="settings-group">
+                    <h4>General Settings</h4>
+                    <!-- User Profile Settings moved here -->
+                    <div class="setting-item" id="changePasswordSetting">
+                        <span class="setting-label">Change Password</span>
+                        <i class="fas fa-chevron-right"></i>
+                    </div>
+                    <div class="setting-item" id="manageEmailNotificationsSetting">
+                        <span class="setting-label">Manage Email Notifications</span>
+                        <i class="fas fa-chevron-right"></i>
+                    </div>
+                    <div class="setting-item" id="deleteAccountSetting">
+                        <span class="setting-label">Delete Account</span>
+                        <i class="fas fa-trash-alt danger-icon"></i>
+                    </div>
+                    <!-- Add other general settings here -->
+                </div>
+
+                <div class="settings-footer-upsell">
+                    <p>Protect all your devices by downloading the app</p>
+                    <div class="app-icons">
+                        <i class="fab fa-windows"></i>
+                        <i class="fab fa-apple"></i>
+                        <i class="fab fa-android"></i>
+                        <i class="fab fa-linux"></i>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Change Password View -->
+            <div class="main-view" id="changePasswordView" style="display: none;">
+                <h3>Change Password</h3>
+                <form id="changePasswordForm" class="settings-form">
+                    <div class="form-group">
+                        <label for="oldPassword">Current Password</label>
+                        <input type="password" id="oldPassword" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="newPassword">New Password</label>
+                        <input type="password" id="newPassword" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="confirmNewPassword">Confirm New Password</label>
+                        <input type="password" id="confirmNewPassword" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Change Password</button>
+                    <button type="button" class="btn btn-secondary back-button" id="backToSettingsFromChangePassword">Back to Settings</button>
+                </form>
+            </div>
+
+            <!-- Email Notifications View -->
+            <div class="main-view" id="emailNotificationsView" style="display: none;">
+                <h3>Manage Email Notifications</h3>
+                <p>Control which email notifications you receive from AI Phishing Detector.</p>
+                <div class="settings-group">
+                    <div class="setting-item">
+                        <span class="setting-label">Phishing Alerts <i class="fas fa-info-circle info-icon"></i></span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="emailPhishingAlertsToggle" checked>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="setting-item">
+                        <span class="setting-label">Weekly Usage Report <i class="fas fa-info-circle info-icon"></i></span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="emailWeeklyReportToggle" checked>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="setting-item">
+                        <span class="setting-label">Promotional Offers <i class="fas fa-info-circle info-icon"></i></span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="emailPromotionalOffersToggle" checked>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                </div>
+                <button type="button" class="btn btn-secondary back-button" id="backToSettingsFromEmailNotifications">Back to Settings</button>
+            </div>
+
+            <!-- Premium Upsell View (Subscription Buying Page) -->
+            <div class="premium-view" id="premiumView" style="display: none;">
+                <div class="premium-header">
+                    <i class="fas fa-shield-alt premium-logo-icon"></i>
+                    <h3>Unlock Premium Features</h3>
+                    <h2>Go Premium!</h2>
+                </div>
+                <div class="premium-features">
+                    <div class="feature-item">
+                        <i class="fas fa-check-circle"></i>
+                        <span>Advanced Phishing Detection</span>
+                    </div>
+                    <div class="feature-item">
+                        <i class="fas fa-shield-alt"></i>
+                        <span>Real-time Threat Alerts</span>
+                    </div>
+                    <div class="feature-item">
+                        <i class="fas fa-download"></i>
+                        <span>Enhanced Download Protection</span>
+                    </div>
+                    <div class="feature-item">
+                        <i class="fas fa-user-shield"></i>
+                        <span>Priority Support</span>
+                    </div>
+                </div>
+                <button class="btn btn-primary btn-large">Purchase Premium</button>
+                <p class="guarantee">30-day money back guarantee</p>
+                <a href="#" class="continue-free">No, thanks, continue as free</a>
+            </div>
+
+            <!-- Hidden old main container - kept for content reference during development -->
+            <div class="container old-container" id="oldMainContainer" style="display: none;"></div>
+        </div>
+    </div>
+
+    <!-- Loading Spinner -->
+    <div class="loading-spinner" id="loadingSpinner" style="display: none;">
+        <div class="spinner"></div>
+        <p>Loading...</p>
+    </div>
+
+    <!-- Scripts -->
+    <script src="popup.js"></script>
+</body>
+</html> 
