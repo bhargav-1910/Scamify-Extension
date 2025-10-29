@@ -1,0 +1,51 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+env/
+ENV/
+venv/
+
+# Databases
+*.db
+backend/database.db
+
+# Machine learning models / large binaries
+*.h5
+*.pkl
+*.joblib
+*.pt
+models/
+ann/optimized_ann_90_9acc.h5
+ann/optimized_ann_90_9acc.h5
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Node / frontend
+node_modules/
+dist/
+build/
+
+# Logs
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# Chrome extension build
+*.crx
+
+# Sensitive files
+.env
+secrets.json
+
+# Ignore local extension unpacked temp folders
+scamify-extension/.cache
+
+# Allow listing specific files if needed
+!important.md

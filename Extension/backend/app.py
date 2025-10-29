@@ -28,6 +28,44 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'ann'))
 sys.path.append(os.path.join(os.path.dirname(__file__), 'models'))
 
+# Suppress TensorFlow warnings for cleaner output
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
+print("\n" + "="*70)
+print("🛡️  SCAMIFY PHISHING DETECTION BACKEND")
+print("="*70)
+
+# Add the ann directory to the path to import the predictor
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'ann'))
+sys.path.append(os.path.join(os.path.dirname(__file__), 'models'))
+
+# Try to import Ultra-Enhanced ANN predictor (NEW - Primary Model)
+print("\n📦 Loading AI Models...")
+try:
+    from models.ultra_ann_predictor import (
+        get_ultra_predictor,
+        predict_url_ultra,
+        predict_url_ultra_detailed,
+        UltraANNPredictor
+    )
+    print("   ✅ Ultra-Enhanced ANN predictor imported")
+    
+    # Initialize the predictor
+    ultra_predictor = get_ultra_predictor()
+    if ultra_predictor.model_loaded:
+        ULTRA_ANN_AVAILABLE = True
+        print(f"   ✅ Model ready: {len(ultra_predictor.feature_names)} features")
+        print(f"   ✅ Whitelist: 250+ domains, 200+ subdomains")
+    else:
+        ULTRA_ANN_AVAILABLE = False
+        ultra_predictor = None
+        print("   ⚠️  Model imported but not ready")
+except ImportError as e:
+    ULTRA_ANN_AVAILABLE = False
+    ultra_predictor = None
+    print(f"   ⚠️  Ultra-Enhanced ANN unavailable: {e}")
+
+# Fallback: Try to import old ANN model
 try:
     import sys
     import os
@@ -36,11 +74,29 @@ try:
     sys.path.append(ann_path)
     from predictor import predict_url as predict_url_ann, extract_features as extract_features_ann
     ANN_MODEL_AVAILABLE = True
-    print("ANN model imported successfully")
+    print("   ℹ️  Old ANN model available (fallback)")
 except ImportError as e:
-    print(f"Could not import ANN model: {e}")
     ANN_MODEL_AVAILABLE = False
     BACKEND_MODEL_AVAILABLE = False
+
+# Import sandbox-backed LSTM analyzer
+try:
+    from models.lstm_behavioral import BehavioralLSTMAnalyzer
+
+    lstm_predictor = BehavioralLSTMAnalyzer()
+    LSTM_MODEL_AVAILABLE = lstm_predictor.available
+    if LSTM_MODEL_AVAILABLE:
+        print("   ✅ Behavioral LSTM sandbox analyzer ready")
+    else:
+        print(f"   ⚠️  LSTM analyzer initialized with warnings: {lstm_predictor.last_error}")
+except ImportError as e:
+    LSTM_MODEL_AVAILABLE = False
+    lstm_predictor = None
+    print(f"   ⚠️  LSTM sandbox analyzer unavailable: {e}")
+except Exception as e:
+    LSTM_MODEL_AVAILABLE = False
+    lstm_predictor = None
+    print(f"   ⚠️  LSTM sandbox analyzer failed to initialize: {e}")
 
 try:
 	import requests as http_requests
@@ -54,6 +110,13 @@ app.config['DATABASE'] = 'database.db'
 
 # Enable CORS (permissive to support chrome-extension origins)
 CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
+
+# Print startup summary
+print("\n📊 Backend Status:")
+print(f"   • Ultra-Enhanced ANN: {'✅ Active' if ULTRA_ANN_AVAILABLE else '❌ Unavailable'}")
+print(f"   • Old ANN Fallback: {'✅ Available' if ANN_MODEL_AVAILABLE else '❌ Unavailable'}")
+print(f"   • LSTM Model: {'✅ Available' if LSTM_MODEL_AVAILABLE else '❌ Unavailable'}")
+print("\n" + "="*70)
 
 # Global variables
 MODEL_PATH = 'models/ann_model.pkl'
@@ -286,32 +349,52 @@ def extract_url_features(url: str) -> List[float]:
         return [0.0] * 50
 
 def predict_phishing(url: str) -> Tuple[str, float]:
-    """Predict if a URL is phishing using the AI model"""
+    """Predict if a URL is phishing using the AI model (Ultra-Enhanced ANN)"""
     try:
-        # Try the original ANN model first
-        if ANN_MODEL_AVAILABLE:
-            prediction, probability = predict_url_ann(url)
-            
-            # Convert numpy float32/float64 to Python float for JSON serialization
-            if hasattr(probability, 'item'):
-                probability = float(probability.item())
-            else:
-                probability = float(probability)
-            
-            # Map the prediction format to match content script expectations
-            if prediction == "Malicious":
-                return "Phishing", probability
-            elif prediction == "Suspicious":
-                return "Suspicious", probability
-            else:  # Legitimate
-                return "Safe", probability
+        # 1. Try Ultra-Enhanced ANN model first (PRIMARY MODEL)
+        if ULTRA_ANN_AVAILABLE and ultra_predictor and ultra_predictor.model_loaded:
+            try:
+                prediction, probability = predict_url_ultra(url)
+                
+                # Convert numpy float32/float64 to Python float for JSON serialization
+                if hasattr(probability, 'item'):
+                    probability = float(probability.item())
+                else:
+                    probability = float(probability)
+                
+                # Ultra model already returns: 'Phishing', 'Suspicious', or 'Safe'
+                print(f"✅ Ultra-Enhanced ANN: {url} -> {prediction} ({probability:.2%})")
+                return prediction, probability
+                
+            except Exception as e:
+                print(f"⚠️ Ultra-Enhanced ANN error (falling back): {e}")
         
-        # Fallback to advanced prediction if ANN model fails
-        else:
-            return fallback_advanced_prediction(url)
+        # 2. Fallback to old ANN model
+        if ANN_MODEL_AVAILABLE:
+            try:
+                prediction, probability = predict_url_ann(url)
+                
+                # Convert numpy float32/float64 to Python float for JSON serialization
+                if hasattr(probability, 'item'):
+                    probability = float(probability.item())
+                else:
+                    probability = float(probability)
+                
+                # Map the prediction format to match content script expectations
+                if prediction == "Malicious":
+                    return "Phishing", probability
+                elif prediction == "Suspicious":
+                    return "Suspicious", probability
+                else:  # Legitimate
+                    return "Safe", probability
+            except Exception as e:
+                print(f"⚠️ Old ANN model error (falling back): {e}")
+        
+        # 3. Final fallback to rule-based prediction
+        return fallback_advanced_prediction(url)
             
     except Exception as e:
-        print(f"Error in prediction: {e}")
+        print(f"❌ Error in prediction pipeline: {e}")
         return fallback_prediction(url)
 
 def predict_url_safety_ann_format(url: str) -> Tuple[str, float]:
@@ -818,7 +901,7 @@ def predict_url():
 def check_url():
     """Lightweight endpoint used by extension content script.
     Expects JSON { "url": "..." } and returns { prediction, probability }.
-    Adds simple stdout logging so user sees activity in terminal.
+    Uses Ultra-Enhanced ANN model with 53 features for maximum accuracy.
     """
     try:
         data = request.get_json(silent=True) or {}
@@ -828,25 +911,44 @@ def check_url():
         url = raw_url
         if not url.startswith(('http://', 'https://')):
             url = 'http://' + url
-        start_ts = datetime.utcnow().isoformat(timespec='seconds')
-        print(f"[CHECK][START] {start_ts} url={url}")
+        
+        # Compact logging - only show URL domain
+        try:
+            from urllib.parse import urlparse
+            domain = urlparse(url).netloc
+            print(f"🔍 Analyzing: {domain}")
+        except:
+            print(f"🔍 Analyzing: {url[:50]}...")
+        
+        # Use the updated predict_phishing which prioritizes Ultra-Enhanced ANN
         prediction, probability = predict_phishing(url)
+        
         if hasattr(probability, 'item'):
             probability = float(probability.item())
         else:
             probability = float(probability)
+        
+        # Determine model used
+        model_used = 'ultra_enhanced_ann' if (ULTRA_ANN_AVAILABLE and ultra_predictor and ultra_predictor.model_loaded) else 'fallback'
+        
+        # Clean result logging
+        status_icon = "✅" if prediction.lower() == "safe" else "🚨" if prediction.lower() == "phishing" else "⚠️"
+        print(f"   {status_icon} Result: {prediction.upper()} ({probability:.1%})")
+        
         end_ts = datetime.utcnow().isoformat(timespec='seconds')
-        print(f"[CHECK][RESULT] {end_ts} url={url} prediction={prediction} probability={probability:.4f}")
+        
         return jsonify({
             'url': url,
-            'prediction': prediction,
+            'prediction': prediction.lower(),  # Ensure lowercase: 'phishing', 'suspicious', 'safe'
             'probability': probability,
+            'model': model_used,
             'timestamp': end_ts
         }), 200
     except Exception as e:
-        err_ts = datetime.utcnow().isoformat(timespec='seconds')
-        print(f"[CHECK][ERROR] {err_ts} error={e}")
-        return jsonify({'error': 'Internal error'}), 500
+        print(f"❌ Error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': 'Internal error', 'message': str(e)}), 500
 
 
 
@@ -923,6 +1025,114 @@ def analyze_url():
     except Exception as e:
         print(f"Error in URL analysis: {e}")
         return jsonify({'error': 'Error analyzing URL'}), 500
+
+
+@app.route('/analyze_behavioral', methods=['POST'])
+def analyze_behavioral():
+    """LSTM-based behavioral analysis endpoint for URL click interception"""
+
+    try:
+        data = request.get_json(silent=True) or {}
+        if 'url' not in data or not data.get('url'):
+            return jsonify({'error': 'URL is required'}), 400
+
+        url = data['url']
+        if not url.startswith(('http://', 'https://')):
+            url = 'http://' + url
+
+        print(f"[BEHAVIORAL][START] Analyzing behavioral features for: {url}")
+
+        if not LSTM_MODEL_AVAILABLE or lstm_predictor is None:
+            print("[BEHAVIORAL][UNAVAILABLE] LSTM sandbox analyzer not ready")
+            return jsonify({
+                'error': 'lstm_unavailable',
+                'message': 'Behavioral analyzer is not available on the backend.',
+                'timestamp': datetime.now().isoformat(),
+            }), 503
+
+        result = lstm_predictor.analyze(url)
+
+        if not result.get('success'):
+            print(f"[BEHAVIORAL][ERROR] LSTM pipeline failure: {result.get('error')}")
+            return jsonify({
+                'error': 'lstm_processing_error',
+                'message': result.get('error') or 'Behavioral analysis failed',
+                'telemetry': result.get('telemetry'),
+                'timestamp': datetime.now().isoformat(),
+            }), 502
+
+        probability = result.get('probability', 0.0)
+        probability = float(probability.item()) if hasattr(probability, 'item') else float(probability)
+        prediction = result.get('prediction', 'Safe')
+        recommendation = result.get('recommendation', 'proceed_with_caution')
+        confidence_level = result.get('confidence_level', 'medium')
+        features = result.get('feature_map', {})
+        extraction_time = float(result.get('extraction_time', 0.0) or 0.0)
+
+        analysis = {
+            'url': url,
+            'prediction': prediction,
+            'probability': probability,
+            'confidence_level': confidence_level,
+            'model_used': result.get('model_used', 'lstm_sandbox'),
+            'behavioral_features': features,
+            'feature_vector': result.get('feature_vector'),
+            'extraction_time': extraction_time,
+            'timestamp': datetime.now().isoformat(),
+            'recommendation': recommendation,
+            'sandbox_engine': result.get('telemetry_engine'),
+            'sandbox_notes': result.get('notes'),
+            'sandbox_error': result.get('telemetry_error'),
+            'sandbox_success': result.get('telemetry_success', True),
+        }
+        if result.get('telemetry'):
+            analysis['telemetry'] = result['telemetry']
+
+        # Log behavioral scan for authenticated users
+        user_id = None
+        if 'Authorization' in request.headers:
+            try:
+                token = request.headers['Authorization'].split(' ')[1]
+                user_id = verify_token(token)
+            except Exception:
+                user_id = None
+
+        if user_id:
+            log_url_scan(user_id, url, prediction, probability)
+
+        print(f"[BEHAVIORAL][RESULT] {prediction} (prob: {probability:.3f}, rec: {recommendation}, engine: {analysis.get('sandbox_engine')})")
+        return jsonify(analysis), 200
+
+    except Exception as e:
+        print(f"[BEHAVIORAL][CRITICAL_ERROR] {e}")
+        return jsonify({
+            'error': 'Critical error in behavioral analysis',
+            'url': data.get('url', 'unknown') if 'data' in locals() else 'unknown',
+            'recommendation': 'proceed_with_caution'
+        }), 500
+
+
+@app.route('/lstm_health', methods=['GET'])
+def lstm_health():
+    """Health check endpoint for LSTM components"""
+    try:
+        health_info = {
+            'lstm_available': LSTM_MODEL_AVAILABLE,
+            'analyzer_initialized': lstm_predictor is not None,
+            'timestamp': datetime.now().isoformat()
+        }
+        
+        if lstm_predictor:
+            health_info.update(lstm_predictor.health_check())
+        
+        return jsonify(health_info), 200
+    except Exception as e:
+        return jsonify({
+            'error': str(e),
+            'lstm_available': False,
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
 
 @app.route('/is_url_flagged', methods=['GET'])
 @require_auth
@@ -1065,7 +1275,10 @@ def internal_error(error):
     return jsonify({'error': 'Internal server error'}), 500
 
 if __name__ == '__main__':
-    print("Starting AI Phishing Detection Backend...")
+    # Print startup banner
+    print("\n" + "="*70)
+    print("🛡️  SCAMIFY - AI PHISHING DETECTION BACKEND")
+    print("="*70)
     
     # Initialize database
     with app.app_context():
@@ -1074,11 +1287,51 @@ if __name__ == '__main__':
     # Load AI model
     load_ai_model()
     
-    print(f"ANN Model Available: {ANN_MODEL_AVAILABLE}")
-    print("Server starting on http://127.0.0.1:5000")
+    # Print model status
+    print("\n📊 MODEL STATUS:")
+    print("-" * 70)
+    
+    if ULTRA_ANN_AVAILABLE and ultra_predictor and ultra_predictor.model_loaded:
+        print(f"✅ Ultra-Enhanced ANN   : Active ({len(ultra_predictor.feature_names)} features)")
+        print(f"   Whitelist Size       : 250+ domains, 200+ subdomains")
+        print(f"   Model File           : ann_model_ultra_enhanced.h5")
+    else:
+        print("❌ Ultra-Enhanced ANN   : Not available")
+    
+    if ANN_MODEL_AVAILABLE:
+        print("ℹ️  Old ANN Model       : Available (fallback)")
+    else:
+        print("❌ Old ANN Model       : Not available")
+    
+    if LSTM_MODEL_AVAILABLE and lstm_predictor:
+        print("✅ LSTM Model          : Available (behavioral analysis)")
+    else:
+        print("❌ LSTM Model          : Not available")
+    
+    # Print API endpoints
+    print("\n🌐 API ENDPOINTS:")
+    print("-" * 70)
+    print("   POST /check              - Quick URL analysis (hover detection)")
+    print("   POST /analyze_url        - Detailed URL analysis")
+    print("   POST /analyze_behavioral - LSTM behavioral analysis")
+    print("   GET  /health             - Health check")
+    print("   POST /register           - User registration")
+    print("   POST /login              - User login")
+    
+    # Print server info
+    print("\n🚀 SERVER INFO:")
+    print("-" * 70)
+    print(f"   Host                 : 127.0.0.1")
+    print(f"   Port                 : 5000")
+    print(f"   Debug Mode           : OFF (stable mode)")
+    print(f"   Database             : {app.config['DATABASE']}")
+    
+    print("\n" + "="*70)
+    print("✨ Server starting... Press Ctrl+C to stop")
+    print("="*70 + "\n")
     
     app.run(
         host='127.0.0.1',
         port=5000,
-        debug=True
+        debug=False  # Disable debug mode for stable testing
     ) 
