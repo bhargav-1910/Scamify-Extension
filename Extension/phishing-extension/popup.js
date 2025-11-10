@@ -391,7 +391,8 @@ function showAuthForm(formType) {
 // Handle power button toggle
 async function handlePowerToggle() {
     extensionSettings.extension_enabled = !extensionSettings.extension_enabled;
-    await updateExtensionSettings();
+    // Persist setting and notify background
+    await saveSettings();
     updateExtensionControls();
     
     // Update power button and connection status in dashboard
@@ -402,15 +403,28 @@ async function handlePowerToggle() {
                 connectionStatus.textContent = 'Connection is ON';
             }
             showNotification('AI Protection enabled', 'success');
+            // Notify background to broadcast state to content scripts
+            try {
+                chrome.runtime.sendMessage({ action: 'toggleExtension', enabled: true });
+            } catch (e) {
+                console.warn('Failed to send toggleExtension message:', e);
+            }
         } else {
             powerButton.classList.remove('active');
             if (connectionStatus) {
                 connectionStatus.textContent = 'Connection is OFF';
             }
             showNotification('AI Protection disabled', 'info');
+            try {
+                chrome.runtime.sendMessage({ action: 'toggleExtension', enabled: false });
+            } catch (e) {
+                console.warn('Failed to send toggleExtension message:', e);
+            }
         }
     }
 }
+
+// (saveSettings is implemented later in this file and will persist all UI toggles)
 
 // Handle Adblock toggle (placeholder for now)
 async function handleAdblockToggle() {
@@ -439,6 +453,14 @@ async function handleManualUrlCheck() {
 
     // Basic URL validation
     try {
+        // Ensure user is logged in and extension is enabled before performing backend scan
+        const s = await chrome.storage.local.get(['authToken', 'currentUser', 'extension_enabled']);
+        const hasAuth = !!(s.authToken && s.currentUser);
+        const enabled = s.extension_enabled !== undefined ? !!s.extension_enabled : true;
+        if (!hasAuth || !enabled) {
+            showNotification('Please log in and enable protection to perform scans.', 'warning');
+            return;
+        }
         new URL(processedUrl);
         console.log('✅ URL validated:', processedUrl);
     } catch (e) {

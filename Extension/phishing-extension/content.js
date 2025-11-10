@@ -14,6 +14,9 @@ setTimeout(() => {
 // Global variables
 let currentTooltip = null;
 let hoverTimeout = null;
+// Extension state flags (default off until we confirm login + enabled)
+let isExtensionEnabled = false;
+let isHoverDetectionEnabled = false;
 
 // Check URL safety using backend API with caching
 async function checkUrlSafety(url) {
@@ -125,36 +128,87 @@ function getLocalUrlAnalysis(url) {
 
 // Simple initialization
 function initializeContentScript() {
-    console.log('🚀 ScamiFy: Initializing...');
-    
-    // Always enable for testing
-    isExtensionEnabled = true;
-    isHoverDetectionEnabled = true;
-    
-    // Set up event listeners immediately
-    setupEventListeners();
-    
-    console.log('✅ ScamiFy: Initialization complete');
-    
-    // Listen for settings changes
+    console.log('🚀 ScamiFy: Initializing... (will only enable when user is logged in and protection is ON)');
+
+    // Read stored settings and auth state before enabling
+    chrome.storage.local.get(['authToken', 'currentUser', 'extension_enabled', 'hover_detection'], function(result) {
+        const hasAuth = !!(result.authToken && result.currentUser);
+        // Default to ON if the stored value is missing (undefined)
+        const enabled = result.extension_enabled !== undefined ? !!result.extension_enabled : true;
+        const hoverEnabled = result.hover_detection !== undefined ? !!result.hover_detection : true;
+
+        isExtensionEnabled = hasAuth && enabled;
+        isHoverDetectionEnabled = hoverEnabled && isExtensionEnabled;
+
+        console.log('🔐 Auth present:', hasAuth, '• extension_enabled:', enabled, '• hover_detection:', hoverEnabled);
+
+        if (isExtensionEnabled && isHoverDetectionEnabled) {
+            setupEventListeners();
+            console.log('✅ ScamiFy: Event listeners active');
+        } else {
+            console.log('⏸️ ScamiFy: Extension inactive (user not logged in or protection disabled)');
+            hideTooltip();
+            clearAllTimeouts();
+        }
+    });
+
+    // Listen for storage changes and react accordingly (login/logout, toggles)
     chrome.storage.onChanged.addListener(function(changes, namespace) {
-        if (namespace === 'local') {
-            if (changes.extension_enabled) {
-                isExtensionEnabled = changes.extension_enabled.newValue;
-                console.log('🔄 Extension state changed to:', isExtensionEnabled);
+        if (namespace !== 'local') return;
+
+        // Auth changes
+        if (changes.authToken || changes.currentUser) {
+            const hasAuthNow = !!(changes.authToken ? changes.authToken.newValue : (changes.currentUser ? changes.currentUser.newValue : null));
+            if (hasAuthNow) {
+                // If user just logged in, enable based on stored setting
+                chrome.storage.local.get(['extension_enabled', 'hover_detection'], function(res) {
+                    // Default missing settings to ON
+                    const enabled = res.extension_enabled !== undefined ? !!res.extension_enabled : true;
+                    const hoverEnabled = res.hover_detection !== undefined ? !!res.hover_detection : true;
+                    isExtensionEnabled = enabled;
+                    isHoverDetectionEnabled = enabled && hoverEnabled;
+                    if (isExtensionEnabled && isHoverDetectionEnabled) {
+                        setupEventListeners();
+                        console.log('🔓 ScamiFy: User logged in — listeners enabled');
+                    }
+                });
+            } else {
+                // User logged out
+                isExtensionEnabled = false;
+                isHoverDetectionEnabled = false;
+                hideTooltip();
+                clearAllTimeouts();
+                console.log('🔒 ScamiFy: User logged out — listeners disabled');
+            }
+        }
+
+        // Extension toggle
+        if (changes.extension_enabled) {
+            const newEnabled = !!changes.extension_enabled.newValue;
+            // Only keep enabled if user is logged in
+            chrome.storage.local.get(['authToken', 'currentUser'], function(res) {
+                const hasAuth = !!(res.authToken && res.currentUser);
+                isExtensionEnabled = hasAuth && newEnabled;
+                console.log('🔄 Extension enabled changed to:', newEnabled, '• effective:', isExtensionEnabled);
                 if (!isExtensionEnabled) {
                     hideTooltip();
-                    clearTimeouts();
-                }
-            }
-            if (changes.hover_detection) {
-                isHoverDetectionEnabled = changes.hover_detection.newValue;
-                console.log('🔄 Hover Detection changed to:', isHoverDetectionEnabled);
-                if (isHoverDetectionEnabled && isExtensionEnabled) {
+                    clearAllTimeouts();
+                } else if (isExtensionEnabled && isHoverDetectionEnabled) {
                     setupEventListeners();
-                } else {
-                    hideTooltip();
                 }
+            });
+        }
+
+        // Hover detection toggle
+        if (changes.hover_detection) {
+            const newHover = !!changes.hover_detection.newValue;
+            isHoverDetectionEnabled = newHover && isExtensionEnabled;
+            console.log('🔄 Hover detection changed to:', newHover, '• effective:', isHoverDetectionEnabled);
+            if (isHoverDetectionEnabled) {
+                setupEventListeners();
+            } else {
+                hideTooltip();
+                clearAllTimeouts();
             }
         }
     });
@@ -289,6 +343,9 @@ function disconnectObserver() {
 
 // Ultra simple hover handler
 function handleHover(event) {
+    // Respect extension state
+    if (!isExtensionEnabled || !isHoverDetectionEnabled) return;
+
     const target = event.target;
     
     // Only handle A tags with href
@@ -785,6 +842,11 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
 
 // Scan current page for suspicious links
 async function scanCurrentPage() {
+    if (!isExtensionEnabled) {
+        console.log('⏸️ ScamiFy: scanCurrentPage skipped - extension disabled or user not logged in');
+        return { totalLinks: 0, suspiciousLinks: 0, prediction: 'disabled', probability: 0 };
+    }
+
     const links = document.querySelectorAll('a[href], [data-url], [data-href]');
     let suspiciousCount = 0;
     let totalCount = 0;

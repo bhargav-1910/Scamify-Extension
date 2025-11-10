@@ -41,6 +41,39 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             sendResponse({ status: 'success', enabled: request.enabled });
         });
         return true;
+    } else if (request.action === 'updateExtensionState') {
+        // Accept an explicit update request (from popup.saveSettings) and broadcast it
+        const extEnabled = request.extensionEnabled !== undefined ? !!request.extensionEnabled : true;
+        const hoverEnabled = request.hoverDetectionEnabled !== undefined ? !!request.hoverDetectionEnabled : true;
+        chrome.storage.local.set({ extension_enabled: extEnabled, hover_detection: hoverEnabled }, () => {
+            broadcastExtensionState();
+            sendResponse({ status: 'updated', extension_enabled: extEnabled, hover_detection: hoverEnabled });
+        });
+        return true;
+    } else if (request.action === 'proxyFetch') {
+        // Proxy fetch to backend from extension background (avoids mixed-content blocking in page context)
+        const url = request.url;
+        const method = request.method || 'GET';
+        const headers = request.headers || {};
+        const body = request.body;
+
+        console.log('[BACKGROUND] proxyFetch ->', method, url);
+
+        fetch(url, {
+            method,
+            headers,
+            body: body && typeof body === 'string' ? body : (body ? JSON.stringify(body) : undefined),
+            credentials: 'same-origin'
+        }).then(async (resp) => {
+            const text = await resp.text();
+            let json = null;
+            try { json = JSON.parse(text); } catch (e) { /* not json */ }
+            sendResponse({ ok: resp.ok, status: resp.status, statusText: resp.statusText, bodyText: text, bodyJson: json });
+        }).catch((err) => {
+            console.error('[BACKGROUND] proxyFetch error', err);
+            sendResponse({ ok: false, error: err.message });
+        });
+        return true;
     }
 });
 

@@ -42,24 +42,47 @@ sys.path.append(os.path.join(os.path.dirname(__file__), 'models'))
 # Try to import Ultra-Enhanced ANN predictor (NEW - Primary Model)
 print("\n📦 Loading AI Models...")
 try:
-    from models.ultra_ann_predictor import (
-        get_ultra_predictor,
-        predict_url_ultra,
-        predict_url_ultra_detailed,
-        UltraANNPredictor
-    )
-    print("   ✅ Ultra-Enhanced ANN predictor imported")
-    
-    # Initialize the predictor
-    ultra_predictor = get_ultra_predictor()
-    if ultra_predictor.model_loaded:
-        ULTRA_ANN_AVAILABLE = True
-        print(f"   ✅ Model ready: {len(ultra_predictor.feature_names)} features")
-        print(f"   ✅ Whitelist: 250+ domains, 200+ subdomains")
-    else:
-        ULTRA_ANN_AVAILABLE = False
-        ultra_predictor = None
-        print("   ⚠️  Model imported but not ready")
+    # Try to import a packaged predictor under backend/models (preferred)
+    try:
+        from models.ultra_ann_predictor import (
+            get_ultra_predictor,
+            predict_url_ultra,
+            predict_url_ultra_detailed,
+            UltraANNPredictor
+        )
+        print("   ✅ Ultra-Enhanced ANN predictor imported from backend.models")
+        ultra_predictor = get_ultra_predictor()
+        ULTRA_ANN_AVAILABLE = bool(getattr(ultra_predictor, 'model_loaded', True))
+    except Exception:
+        # Fallback: try to load the ANN-model package at repository root (ANN-model)
+        try:
+            ann_model_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'ANN-model')
+            if os.path.isdir(ann_model_path):
+                sys.path.append(ann_model_path)
+                from test_ultra_enhanced_model import UltraEnhancedDetector
+
+                print('   ℹ️ Found ANN-model package; initializing UltraEnhancedDetector')
+                ultra_predictor = UltraEnhancedDetector()
+                # create a small wrapper function to match expected interface
+                def predict_url_ultra(url):
+                    r = ultra_predictor.predict(url)
+                    # test predictor returns keys: 'prediction' and 'probability_legitimate'
+                    pred = r.get('prediction', 'Legitimate')
+                    prob = float(r.get('probability_legitimate', 1.0))
+                    # Map to naming used elsewhere
+                    return pred, prob
+
+                def predict_url_ultra_detailed(url):
+                    return ultra_predictor.predict(url)
+
+                ULTRA_ANN_AVAILABLE = True
+                print('   ✅ Ultra-Enhanced ANN loaded from ANN-model folder')
+            else:
+                raise ImportError('ANN-model package not found')
+        except Exception as e:
+            ULTRA_ANN_AVAILABLE = False
+            ultra_predictor = None
+            print(f"   ⚠️  Ultra-Enhanced ANN unavailable: {e}")
 except ImportError as e:
     ULTRA_ANN_AVAILABLE = False
     ultra_predictor = None
@@ -90,9 +113,82 @@ try:
     else:
         print(f"   ⚠️  LSTM analyzer initialized with warnings: {lstm_predictor.last_error}")
 except ImportError as e:
-    LSTM_MODEL_AVAILABLE = False
+    # No dedicated LSTM analyzer module found; provide a lightweight HTTP-based behavioral analyzer
+    LSTM_MODEL_AVAILABLE = True
     lstm_predictor = None
-    print(f"   ⚠️  LSTM sandbox analyzer unavailable: {e}")
+    print(f"   ⚠️  LSTM sandbox analyzer module not found: {e}; will use lightweight HTTP behavioral analyzer fallback")
+
+    class BehavioralLSTMAnalyzer:
+        def __init__(self):
+            self.available = True
+            self.last_error = None
+
+        def analyze(self, url: str) -> dict:
+            """Perform lightweight behavioral-like analysis by fetching the page and extracting simple signals."""
+            result = {'success': False, 'error': None}
+            try:
+                if http_requests is None:
+                    return {'success': False, 'error': 'requests library not available'}
+                start = datetime.utcnow()
+                resp = http_requests.get(url, timeout=10)
+                elapsed = (datetime.utcnow() - start).total_seconds()
+                text = resp.text or ''
+
+                # simple feature extraction
+                features = {}
+                features['content_length'] = len(text)
+                features['num_scripts'] = text.count('<script')
+                features['num_forms'] = text.count('<form')
+                features['password_fields'] = text.count('type="password"') + text.count("type='password'")
+                features['num_iframes'] = text.count('<iframe')
+                features['num_links'] = text.count('<a ')
+                # external links heuristic
+                domain = urlparse(url).netloc.lower()
+                external_links = 0
+                for m in re.findall(r'href=["\'](https?://[^"\']+)["\']', text, flags=re.IGNORECASE):
+                    try:
+                        if urlparse(m).netloc.lower() != domain:
+                            external_links += 1
+                    except Exception:
+                        continue
+                features['external_requests'] = external_links
+                # suspicious keywords
+                keywords = ['login', 'verify', 'account', 'secure', 'update', 'password', 'bank', 'paypal']
+                features['suspicious_keywords'] = sum(1 for k in keywords if k in text.lower())
+                features['has_errors'] = 1 if resp.status_code >= 400 else 0
+
+                # Simple heuristic classifier
+                score = 0.0
+                score += min(features['password_fields'] * 0.3, 0.6)
+                score += min(features['external_requests'] * 0.05, 0.4)
+                score += 0.2 if features['suspicious_keywords'] > 0 else 0
+                score += 0.15 if features['num_iframes'] > 2 else 0
+
+                probability = min(score, 1.0)
+                if probability >= 0.6:
+                    prediction = 'Phishing'
+                    recommendation = 'block'
+                elif probability >= 0.35:
+                    prediction = 'Suspicious'
+                    recommendation = 'warn'
+                else:
+                    prediction = 'Safe'
+                    recommendation = 'allow'
+
+                result = {
+                    'success': True,
+                    'prediction': prediction,
+                    'probability': probability,
+                    'recommendation': recommendation,
+                    'confidence_level': 'high' if probability > 0.7 else 'medium' if probability > 0.4 else 'low',
+                    'feature_map': features,
+                    'feature_vector': None,
+                    'extraction_time': elapsed,
+                    'model_used': 'heuristic_lstm_fallback'
+                }
+                return result
+            except Exception as e2:
+                return {'success': False, 'error': str(e2)}
 except Exception as e:
     LSTM_MODEL_AVAILABLE = False
     lstm_predictor = None

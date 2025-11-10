@@ -22,8 +22,9 @@ let SC_STATE = {
     activeEl: null,
     fetching: false,
     hideTimer: null,
-    enabled: true,
-    hoverEnabled: true,
+    // Start disabled until we verify user is logged in and extension toggle is ON
+    enabled: false,
+    hoverEnabled: false,
     clickInterceptionEnabled: true,
     cache: new Map(),
     pendingAnalysis: new Map(),
@@ -111,7 +112,7 @@ class ScamifyAPI {
     static async fetchWithTimeout(url, options, timeout, externalController = null) {
         const controller = externalController instanceof AbortController ? externalController : new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), timeout);
-        
+
         try {
             const response = await fetch(url, {
                 ...options,
@@ -121,11 +122,53 @@ class ScamifyAPI {
             return response;
         } catch (error) {
             clearTimeout(timeoutId);
-            throw error;
+            scWarn('Direct fetch failed, attempting background proxy:', error && error.message ? error.message : error);
+
+            // Fallback: try proxying the request through the extension background script
+            try {
+                return await new Promise((resolve, reject) => {
+                    try {
+                        chrome.runtime.sendMessage({
+                            action: 'proxyFetch',
+                            url,
+                            method: options && options.method ? options.method : 'GET',
+                            headers: options && options.headers ? options.headers : {},
+                            body: options && options.body ? options.body : undefined
+                        }, (resp) => {
+                            if (!resp) return reject(new Error('No response from background proxy'));
+                            if (!resp.ok) {
+                                const e = new Error(`Proxy fetch failed: ${resp.status} ${resp.statusText || ''}`);
+                                e.responseText = resp.bodyText;
+                                return reject(e);
+                            }
+                            // Create a Response-like object for caller compatibility
+                            const fakeResponse = {
+                                ok: resp.ok,
+                                status: resp.status,
+                                statusText: resp.statusText,
+                                json: async () => resp.bodyJson,
+                                text: async () => resp.bodyText
+                            };
+                            resolve(fakeResponse);
+                        });
+                    } catch (err) {
+                        reject(err);
+                    }
+                });
+            } catch (proxyError) {
+                scWarn('Background proxy fetch also failed', proxyError && proxyError.message ? proxyError.message : proxyError);
+                throw proxyError;
+            }
         }
     }
     
     static async analyzeWithANN(url) {
+        // Respect extension state: do not perform network calls when disabled
+        if (!SC_STATE.enabled) {
+            scWarn('ANN skipped - extension disabled', { url });
+            return { prediction: 'disabled', probability: 0.0, ts: scNow(), model: 'ann_disabled' };
+        }
+
         const cached = SC_STATE.cache.get(`ann_${url}`);
         if (cached && (scNow() - cached.ts) < SCAMIFY_CONFIG.CACHE_TTL) {
             scLog('ANN CACHE HIT', { url, prediction: cached.prediction });
@@ -173,6 +216,11 @@ class ScamifyAPI {
     }
     
     static async analyzeWithLSTM(url, abortController = null) {
+        if (!SC_STATE.enabled) {
+            scWarn('LSTM skipped - extension disabled', { url });
+            return { prediction: 'disabled', probability: 0.0, recommendation: 'allow', confidence_level: 'low', model_used: 'lstm_disabled', behavioral_features: null, extraction_time: 0 };
+        }
+
         scLog('LSTM FETCH START', { url });
         
         try {
@@ -614,7 +662,8 @@ function resolveUrlFromTarget(target) {
 // Main Logic - Click Interception (LSTM Model)
 // ---------------------------------------------------------------------------
 async function handleClickInterception(event, url) {
-    if (!SC_STATE.clickInterceptionEnabled) return;
+    // Only perform click interception when extension is enabled
+    if (!SC_STATE.enabled || !SC_STATE.clickInterceptionEnabled) return;
     
     scLog('CLICK INTERCEPTED', { url });
     
@@ -840,6 +889,16 @@ function setupEventListeners() {
     scLog('Event listeners attached successfully');
 }
 
+function teardownEventListeners() {
+    document.removeEventListener('mouseover', onMouseOver, true);
+    document.removeEventListener('mousemove', onMouseMove, true);
+    document.removeEventListener('mouseout', onMouseOut, true);
+    document.removeEventListener('click', onClick, true);
+    document.removeEventListener('scroll', onScroll, true);
+    window.removeEventListener('blur', onWindowBlur);
+    scLog('Event listeners removed');
+}
+
 function showActivationBanner() {
     try {
         if (document.getElementById('scamify-activation-banner')) return;
@@ -881,11 +940,33 @@ function initialize() {
     if (window.__SCAMIFY_ENHANCED_READY) return;
     window.__SCAMIFY_ENHANCED_READY = true;
     
-    setupEventListeners();
-    showActivationBanner();
-    
-    scLog('ScamiFy Enhanced (ANN + LSTM) initialized successfully');
-    console.log('🎯 SCAMIFY: Enhanced protection active - Hover for ANN analysis, Click for LSTM behavioral analysis');
+    // Read storage to decide whether to enable features (require login + toggle)
+    try {
+        chrome.storage.local.get(['authToken', 'currentUser', 'extension_enabled', 'hover_detection'], (res) => {
+            const hasAuth = !!(res.authToken && res.currentUser);
+            // Default to ON when the stored value is missing (undefined) to provide a better UX
+            const enabled = res.extension_enabled !== undefined ? !!res.extension_enabled : true;
+            const hover = res.hover_detection !== undefined ? !!res.hover_detection : true;
+
+            SC_STATE.enabled = hasAuth && enabled;
+            SC_STATE.hoverEnabled = SC_STATE.enabled && hover;
+
+            scLog('Initialization storage state', { hasAuth, enabled, hover, effectiveEnabled: SC_STATE.enabled, effectiveHover: SC_STATE.hoverEnabled });
+
+            if (SC_STATE.enabled) {
+                setupEventListeners();
+                showActivationBanner();
+                scLog('ScamiFy Enhanced (ANN + LSTM) initialized successfully');
+                console.log('🎯 SCAMIFY: Enhanced protection active - Hover for ANN analysis, Click for LSTM behavioral analysis');
+            } else {
+                scLog('ScamiFy Enhanced initialized in INACTIVE mode (login required or protection disabled)');
+                console.log('⚠️ SCAMIFY: Enhanced protection is inactive - login and enable protection to activate');
+            }
+        });
+    } catch (e) {
+        scWarn('Failed to read storage during initialize', e);
+        // Fallback: keep disabled
+    }
 }
 
 // Handle different document ready states
@@ -898,13 +979,70 @@ if (document.readyState === 'loading') {
 // Message handling from background script
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'updateExtensionState') {
-        SC_STATE.enabled = request.extensionEnabled;
-        SC_STATE.hoverEnabled = request.hoverDetectionEnabled;
-        scLog('Extension state updated', {
-            enabled: SC_STATE.enabled,
-            hoverEnabled: SC_STATE.hoverEnabled
+        // Respect user auth: only enable if user is logged in
+            chrome.storage.local.get(['authToken', 'currentUser'], (res) => {
+            const hasAuth = !!(res.authToken && res.currentUser);
+            // Treat missing requested flags as ON by default
+            const requestedEnabled = request.extensionEnabled !== undefined ? !!request.extensionEnabled : true;
+            const requestedHover = request.hoverDetectionEnabled !== undefined ? !!request.hoverDetectionEnabled : true;
+
+            SC_STATE.enabled = requestedEnabled && hasAuth;
+            SC_STATE.hoverEnabled = requestedHover && SC_STATE.enabled;
+
+            scLog('Extension state updated (message)', {
+                requestedEnabled: request.extensionEnabled,
+                requestedHover: request.hoverDetectionEnabled,
+                hasAuth,
+                effectiveEnabled: SC_STATE.enabled,
+                effectiveHover: SC_STATE.hoverEnabled
+            });
+
+            // Attach or detach listeners based on effective state
+            if (SC_STATE.enabled) {
+                setupEventListeners();
+                showActivationBanner();
+            } else {
+                teardownEventListeners();
+                ScamifyTooltip.hide(true);
+            }
+
+            sendResponse({ status: 'updated' });
         });
-        sendResponse({ status: 'updated' });
+    }
+});
+
+// React to storage changes (auth login/logout or settings changes)
+chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local') return;
+
+    // If auth changed, re-evaluate effective state
+    if (changes.authToken || changes.currentUser || changes.extension_enabled || changes.hover_detection) {
+            chrome.storage.local.get(['authToken', 'currentUser', 'extension_enabled', 'hover_detection'], (res) => {
+            const hasAuth = !!(res.authToken && res.currentUser);
+            // Default missing stored toggles to ON
+            const requestedEnabled = res.extension_enabled !== undefined ? !!res.extension_enabled : true;
+            const requestedHover = res.hover_detection !== undefined ? !!res.hover_detection : true;
+
+            const effectiveEnabled = requestedEnabled && hasAuth;
+            const effectiveHover = effectiveEnabled && requestedHover;
+
+            scLog('Storage change -> recompute effective state', { hasAuth, requestedEnabled, requestedHover, effectiveEnabled, effectiveHover });
+
+            if (effectiveEnabled && !SC_STATE.enabled) {
+                SC_STATE.enabled = true;
+                SC_STATE.hoverEnabled = effectiveHover;
+                setupEventListeners();
+                showActivationBanner();
+            } else if (!effectiveEnabled && SC_STATE.enabled) {
+                SC_STATE.enabled = false;
+                SC_STATE.hoverEnabled = false;
+                teardownEventListeners();
+                ScamifyTooltip.hide(true);
+            } else {
+                // update hover flag only
+                SC_STATE.hoverEnabled = effectiveHover;
+            }
+        });
     }
 });
 
