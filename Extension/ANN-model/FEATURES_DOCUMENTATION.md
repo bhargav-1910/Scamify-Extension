@@ -37,7 +37,7 @@ These are the baseline URL structure features:
 
 Advanced character pattern detection:
 
-19. **min_domain_distance** - Minimum Levenshtein distance to 133 known legitimate domains
+19. **min_domain_distance** - Minimum Levenshtein distance to 355 known legitimate domains
     - Range: 0.0 (exact match) to 1.0 (completely different)
     - **Key for typosquatting detection**
 
@@ -81,10 +81,10 @@ Detects internationalized domain name attacks:
 
 ### **Category 4: Whitelist & Trust System (4 features)**
 
-Expanded whitelist with 133+ legitimate domains:
+Expanded whitelist with 355 legitimate domains:
 
 29. **is_whitelisted** - Binary: 1 if domain is in whitelist
-    - **133 trusted domains** including:
+    - **355 trusted domains** including:
       - Tech: Google, Facebook, Microsoft, Apple, Amazon
       - Social: Twitter, Instagram, LinkedIn, Reddit, TikTok
       - Dev: GitHub, StackOverflow, npm, Docker
@@ -278,7 +278,7 @@ features = extract_ultra_enhanced_features(
 
 | Feature | Baseline (18) | Enhanced (35) | Ultra-Enhanced (53) |
 |---------|--------------|---------------|---------------------|
-| **Whitelist Size** | 40 domains | 40 domains | **133 domains** ✅ |
+| **Whitelist Size** | 40 domains | 40 domains | **355 domains** ✅ |
 | **Trusted Subdomains** | ❌ No | ❌ No | ✅ **Yes** (fixes accounts.google.com) |
 | **Domain Age** | ❌ No | ❌ No | ✅ **Optional** (WHOIS) |
 | **SSL Validation** | ❌ No | ❌ No | ✅ **Optional** |
@@ -296,7 +296,7 @@ features = extract_ultra_enhanced_features(
    - Fast dataset generation (no network delays)
    - Optional for real-time testing only
 
-2. **Expanded Whitelist (133+ domains)** ✅
+2. **Expanded Whitelist (355 domains)** ✅
    - Covers: Tech giants, social media, dev tools, education, AI companies
    - Includes: OpenAI, YCombinator, Khan Academy (fixes previous false positives)
 

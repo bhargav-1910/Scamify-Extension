@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "ScamiFy",
+  "name": "Scamify",
   "version": "1.1",
   "description": "AI-powered phishing detection with real-time scanning and download protection",
   "permissions": [
@@ -40,7 +40,7 @@
   ],
   "action": {
     "default_popup": "popup.html",
-    "default_title": "ScamiFy"
+    "default_title": "Scamify"
   },
   "icons": {
     "16": "icons/logo.png",

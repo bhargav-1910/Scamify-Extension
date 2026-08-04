@@ -4,17 +4,17 @@ Last updated: 2025-11-04
 
 ## Summary
 
-`basic_lstm_model_best.h5` is a trained Keras/TensorFlow LSTM model used in this repository (ScamiFy) for binary phishing detection. It performs deep behavioral analysis using 24 behavioral features extracted from web pages (via Selenium). The model produces a single probability (sigmoid) output representing the likelihood that a URL is phishing.
+`basic_lstm_model_best.h5` is a trained Keras/TensorFlow LSTM model used in this repository (Scamify) for binary phishing detection. It performs deep behavioral analysis using 24 behavioral features extracted from web pages (via Selenium). The model produces a single probability (sigmoid) output representing the likelihood that a URL is phishing.
 
 This report summarizes what we can infer from the repository code and documentation, how the model is used, the expected inputs/outputs, preprocessing, testing and integration points, and recommendations for inspection and reproduction.
 
 ## File locations
 
 - Primary model file (references found in the repo):
-  - `Scamify-main/Extension/backend/models/basic_lstm_model_best.h5`
+  - `Extension/backend/models/basic_lstm_model_best.h5`
   - Also referenced in project root as `basic_lstm_model_best.h5` for testing scripts.
 
-- Feature scaler (preprocessing): `Scamify-main/Extension/backend/models/feature_scaler.pkl` (or `feature_scaler.pkl` in repo root)
+- Feature scaler (preprocessing): `Extension/backend/models/feature_scaler.pkl` (or `feature_scaler.pkl` in repo root)
 
 ## Model type and task
 
@@ -36,7 +36,7 @@ This report summarizes what we can infer from the repository code and documentat
 
 ## Exact feature list and ordering (24 features)
 
-The feature extractor (`Scamify-main/Extension/backend/lstm_feature_extractor.py`) produces the following 24-element vector in this exact order (this is the order expected by the model and saved CSVs/tests):
+The feature extractor (`Extension/backend/lstm_feature_extractor.py`) produces the following 24-element vector in this exact order (this is the order expected by the model and saved CSVs/tests):
 
 1. success
 2. num_events
@@ -140,7 +140,7 @@ Notes:
  ```
 
  Notes on evaluation
- - The test harness used the project's scaler file found in the repo (`feature_scaler (1).pkl` / `Scamify-main/Extension/backend/models/feature_scaler.pkl`) to transform features before evaluation.
+ - The test harness used the project's scaler file found in the repo (`feature_scaler (1).pkl` / `Extension/backend/models/feature_scaler.pkl`) to transform features before evaluation.
  - The dataset used for this run is the merged training dataset included in the repo (`merged_training_dataset.csv`). The sample sizes and class distributions in that CSV influence these metrics; if you use a different dataset, metrics may change.
 
  Model architecture (summary)
@@ -169,7 +169,7 @@ Notes:
 
  Where the evaluation artifacts were saved
  - `model_comparison_results.json` — the JSON summary of both models' metrics (created in repo root)
- - `Scamify-main/Extension/backend/models/model_report.json` — the model inspection JSON with the `model.summary()` text and per-layer param counts
+ - `Extension/backend/models/model_report.json` — the model inspection JSON with the `model.summary()` text and per-layer param counts
 
  How I ran the evaluation (commands executed locally in project root)
 
@@ -178,7 +178,7 @@ Notes:
  Copy-Item .\merged_training_dataset.csv .\events_dataset_full.csv -Force
 
  # 2) Inspect model and scaler (generates model_report.json)
- python .\model_inspect.py --model "Scamify-main/Extension/backend/models/basic_lstm_model_best.h5" --scaler "feature_scaler.pkl"
+ python .\model_inspect.py --model "Extension/backend/models/basic_lstm_model_best.h5" --scaler "feature_scaler.pkl"
 
  # 3) Run model comparison test (saves model_comparison_results.json)
  python .\test_both_models.py
@@ -216,7 +216,7 @@ Notes on the retrain results:
 - Class weights computed from the training split were close to balanced for this dataset; nevertheless, continuing training improved recall (model became more sensitive to phishing examples).
 
 ## Recommended immediate changes
-- Set production inference threshold to 0.43 (immediate benefit). I updated the inference wrapper `Scamify-main/Extension/backend/lstm_predictor.py` so the default prediction threshold is `0.43` (configurable in the constructor).
+- Set production inference threshold to 0.43 (immediate benefit). I updated the inference wrapper `Extension/backend/lstm_predictor.py` so the default prediction threshold is `0.43` (configurable in the constructor).
 - Deploy the retrained model (`basic_lstm_model_quick_retrain.h5`) only after validation with your production holdout — I can help validate and replace the saved production model if you want.
 
 ## Next steps (if you want me to continue)
